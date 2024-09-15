@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ name }}</title>
+  <link rel="stylesheet" href="../static/css/normalize.css">
+  <link rel="stylesheet" href="../static/css/style_2.css">
+  <script defer src="../static/js/main.js"></script>
+</head>
+<body background="{{ images[1] }}">
+  <header>
+    <div class="container flex header__container">
+      <h1>{{ name }}</h1>
+      <a href="/"><p>На главную</p></a> 
+    </div>  
+  </header>
+  <main>
+    <section class="banner">
+      <div class="container flex banner__poster poster">
+        <img src="{{ images[0] }}" alt="">
+      </div>
+    </section>
+    <section class="info">
+      <div class="container flex info__about about">
+        <div class="about__card">
+          <h3 class="title__card">Информация</h3>
+          <ul class="flex card__list list">
+            {% for info in info_block %}
+            <li class="list__item item">
+              <p class="item__point"><strong>{{ info[0] }}</strong>:   {{ info[1]|safe }}</p>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+        <div class="about__card" style="">
+          <h3 class="title__card">Сюжет</h3>
+          <p class="item__point">
+            {{ description }}
+          </p>
+        </div>
+        <div class="about__card">
+          <h3 class="title__card"> Актеры и создатели</h3>
+          <ul class="card__person flex">
+            {% for actors in actors_list %}
+            <li class="list__item_2 flex">
+              <p class="card__number"> {{ actors[0] }} </p>
+              <img src="{{ actors[2] }}" alt="" height="40px" class="photo">
+              <a href="https://www.kinopoisk.ru/name/{{ actors[1] }}" target="_blank">{{ actors[3] }}</a>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+
+      <div class="container flex info__about about">
+
+        {% if similar %}
+        <div class="about__card">
+          <h3 class="title__card">Похожие фильмы</h3>
+          <ul class="flex card__list list">
+            {% for film in similar %}
+            <li class="list__item item">
+              <p class="item__point item__similar"> {{ film|safe }}</p>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% else %}
+        <div class="about__card about__card__alt_img">
+          <img src="{{ images[0] }}" alt="" class="banner__poster about__card__alt_img">
+        </div>
+        {% endif %}
+
+
+        {% if sequels %}
+        <div class="about__card">
+          <h3 class="title__card">Римейки и сиквелы</h3>
+          <ul class="flex card__list list">
+            {% for film in sequels %}
+            <li class="list__item item">
+              <p class="item__point item__similar"> {{ film|safe }}</p>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% else %}
+        <div class="about__card about__card__alt_img">
+          <img src="{{ images[0] }}" alt="" class="banner__poster about__card__alt_img">
+        </div>
+        {% endif %}
+        
+        {% if trailer %}
+        <div class="about__card">
+          <h3 class="title__card"> Трейлеры</h3>
+          <ul class="card__trailer flex">
+            {% for video_url in trailer %}
+            <li class="list__item_6 flex">
+              <a href="{{ video_url['url'] }}" target="_blank">{{ video_url['name'] }}</a>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% else %}
+        <div class="about__card about__card__alt">
+          <img src="{{ images[0] }}" alt="" class="banner__poster about__card__alt_img">
+        </div>
+        {% endif %}
+
+      </div>
+    </section>
+    {% if seasons %}
+    <section class="seasons">
+      <div class="container flex special__container">
+        <a href="#hidden" class="special__title_card"><h3 class="title__card">Сезоны</h3></a>
+        <p id="hidden" style="visibility: hidden;">скрыто</p>
+        <ul class="special_list flex" style="display: none;">
+          {% for season in seasons %}
+          <li class="special__block">
+              <h4 class="special__title">{{ season[0] }}</h4>
+              <ul class="special__content flex">
+                {% for info_series in season[1] %}
+                <li class="">
+                  <h6 class="special__title_content">{{ info_series[0] }}</h6>
+                  <p class="special__info_content">{{ info_series[1]|safe }}</p>
+                </li>
+                {% endfor %}
+              </ul>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </section>
+    {% endif %}
+
+    {% if previews %}
+    <section class="preview">
+      <div class="container flex special__container">
+        <a href="#hidden-2" class="special__title_card-2"><h3 class="title__card">Отзывы</h3></a>
+        <p id="hidden-2" style="visibility: hidden;">скрыто</p>
+        <ul class="special_list-2 flex" style="display: none;">
+          {% for preview in previews %}
+          <li class="special__block">
+              <h4 class="special__title special__title_2">{{ preview[0] }}</h4>
+              <ul class="special__content flex">
+                {% for info_series in preview[1] %}
+                <li class="">
+                  <p class="special__info_content">{{ info_series|safe }}</p>
+                </li>
+                {% endfor %}
+              </ul>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </section>
+    {% endif %}
+  </main>
+</body>
+</html>
