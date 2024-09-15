@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Кино всех времен и жанров</title>
+  <link rel="stylesheet" href="../static/css/normalize.css">
+  <link rel="stylesheet" href="../static/css/animate.css">
+  <link rel="stylesheet" href="../static/css/style.css">
+  <script defer src="../static/js/main.js"></script>
+</head>
+<body background="{{ image }}">  
+  <header>
+    <div class="container flex header__container">
+      <h1 class="animate__animated animate__zoomIn">Кино всех времен и жанров</h1>
+      <p class="title">Выберите интересующие вас жанры:</p>
+      <form method="post" class="flex">
+        <div class="send__wrapper flex">
+          {% for genre in genres %}
+            <label class="send__check">
+              <input type="checkbox" name="{{ genre }}">
+              {{ genre }}
+            </label>
+          {% endfor %}
+        </div>
+        <button class="btn-reset btn send__btn" type="submit">Фильм! Фильм! Фильм!</button>
+      </form>
+    </div>
+    <main>
+      <section class="info">
+        <div class="container flex info__container">
+          <a class="link_nav" href="javascript:location.reload(true)"><p class="reload">Обновить</p></a>
+          <a class="link_nav" href="#end">вниз</a>
+
+          <ul class="flex info__list list">
+
+            <div class="forms flex">
+              <form method="post" class="flex">
+                <div class="send__wrapper flex">
+                  <label class="item-name" for="field__select">Выберите критерий сортировки:</label>
+                  <select name="field" id="field__select">
+                    <option value="название" selected>название</option>
+                    {% for field in field_sort %}
+                    <option value="{{ field }}">{{ field }}</option>
+                    {% endfor %}
+                  </select>
+                </div>         
+                  <label class="reverse_block flex">
+                    <p class="title_reverse">В обратном порядке</p>
+                    <input type="checkbox" name="revers">
+                  </label>
+                <button class="btn-reset btn send__btn" type="submit">сортировать</button>
+              </form>
+
+              <form method="post" class="flex">
+                <div class="send__wrapper flex">
+                  <select class="filter_select" name="field" id="field__select">
+                    <option class="filter" selected>Выберите страну</option>
+                    {% for field in countries_all %}
+                    <option value="{{ field }}">{{ field }}</option>
+                    {% endfor %}
+                  </select>
+                </div>         
+                <button disabled class="btn-reset btn button_filter" type="submit">фильтровать</button>
+              </form>
+            </div>
+
+            {% for number in movies %}
+            <li class="list__item flex">
+              <a href="/film/{{ number[1] }}" class="movie" target="_blank">{{ number[0] }}. {{ movies[number]|safe }}</a>
+                {% if number[0] % 20 == 0 %}
+                  <div>
+                    <a class="link_nav" href="#">вверх</a>
+                    <a class="link_nav" href="#end">вниз</a>
+                  </div>                
+                {% endif %}
+            </li>
+            {% endfor %}
+          </ul>
+          <a id="end" class="link_nav" href="#">вверх</a>
+          <a class="link_nav" href="javascript:location.reload(true)"><p class="reload">Обновить</p></a>
+        </div>
+      </section>
+    </main>
+  </header>
+</body>
+</html>
