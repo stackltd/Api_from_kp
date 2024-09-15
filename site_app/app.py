@@ -1,4 +1,3 @@
-import json
 import os
 import random
 import logging
@@ -6,7 +5,7 @@ import logging
 from flask import Flask, request, render_template, redirect
 from utils import Parser
 
-from  messages import error
+from models import get_info, get_field, get_long_info
 
 app = Flask(__name__)
 
@@ -23,14 +22,44 @@ logger.addHandler(handler_2)
 movie_list = []
 
 
+def sim_seq_movie(key, common_info):
+    out_list = []
+    for movie_info in common_info.get(key, {}):
+        names = r"/".join(
+            map(lambda x: x if x else '', [movie_info['name'], movie_info['enName'], movie_info['alternativeName']]))
+        mov_id = movie_info["id"]
+        res = get_long_info(id_movie=mov_id)
+        if res:
+            print(f"фильма с {mov_id = } есть в базе")
+        else:
+            res = Parser().make_json(id_movies=tuple((str(mov_id),)), parse_from_web=True)
+        url = '' if res else "https://www.kinopoisk.ru/film/"
+        names = fr"""<a href="{url}{mov_id}" target="_blank">{names}</a>"""
+        out_list.append(names)
+    return out_list
+
+
+def points(field, genres=("", )):
+    list_points = []
+    result = get_field(field=field, genres=genres)
+    for fields in result:
+        points_list = fields[0].split(", ")
+        list_points.extend(points_list)
+    else:
+        list_points = sorted(set(list_points))
+    return list_points
+
+
 @app.route('/', methods=['POST', 'GET'])
 def index():
+    genres = points("genres")
+    countries_all = points("countries")
+
     get_form = request.form
     form_values = set(get_form.values())
     form_keys = set(get_form.keys())
     global movie_list
     field_sort = {'название': 2, 'id': 0, 'страна': 3, 'год': 4, 'жанр': 5, 'голоса': 7}
-    # print(list(get_form.items()))
 
     list_img = []
     for file in os.listdir('./static/img'):
@@ -44,21 +73,18 @@ def index():
     fields.update(countries_all)
     if not form_values.intersection(fields):
         movie_list = []
-        for movie in dump_in.values():
-            list_of_dict = movie["Общая информация о фильме"]
-            genres_list = list_of_dict["genres"]
-            genres_set = {genre["name"] for genre in genres_list}
-            if form_keys <= genres_set:
-                name_movie = str(list_of_dict['name'])
-                countries = ', '.join(country['name'] for country in list_of_dict['countries'])
-                year = str(list_of_dict['year']) if list_of_dict['year'] else '0'
-                genres_movie = ', '.join(country['name'] for country in list_of_dict['genres'])
-                print(genres_movie)
-                id_movie = list_of_dict["id"]
-                votes = str(list_of_dict["votes"].get('kp', 0))
-                all_info = [str(id_movie), f'<span>{str(id_movie)}</span>', name_movie, countries, year, genres_movie,
-                            f'<span>{votes}</span>', votes]
-                movie_list.append(all_info)
+        result = get_info(genres=form_keys) if form_keys else get_info()
+        countries_all = points(field="countries", genres=form_keys) if form_keys else points(field="countries")
+        for movie in result:
+            name_movie = movie.name
+            countries = movie.countries
+            year = str(movie.year)
+            genres_movie = movie.genres
+            id_movie = str(movie.id_movie)
+            votes = str(movie.votes)
+            all_info = [str(id_movie), f'<span>{str(id_movie)}</span>', name_movie, countries, year, genres_movie,
+                        f'<span>{votes}</span>', votes]
+            movie_list.append(all_info)
     # print(movie_list[0])
     # ['1227993', '<span>1227993</span>', 'Водоворот', 'Россия', '2020', 'триллер, драма, детектив, криминал', '<span>151311</span>', '151311']
     # сортировка уже заготовленного списка фильмов
@@ -83,31 +109,13 @@ def index():
 
 @app.route('/film/<int:mov_id>')
 def page(mov_id: int):
-    global dump_in
-    if mov_id == 0:
-        with open(file='../dumps/movies_info.json', mode='r', encoding='utf-8') as file:
-            dump_in_2 = json.load(file)
-            dump_in.update(dump_in_2)
-            return redirect(location=f"http://127.0.0.2/")
-        # return (f'<p style="width: 100%; min-height: 50vh; padding-top: 50vh; font-size: 30px; text-align: center;'
-        #         f' background-color: #a7b9dc;">Информация обновлена</p>')
-    elif mov_id == 1:
-        dump_in = Parser().get_json(pref='../')
-        return redirect(location=f"http://127.0.0.2/")
-        # return (f'<p style="width: 100%; min-height: 50vh; padding-top: 50vh; font-size: 30px; text-align: center;'
-        #         f' background-color: #a7b9dc;">Информация обновлена</p>')
-
-    all_info = dump_in.get(str(mov_id), {})
+    all_info = get_long_info(id_movie=mov_id)
     if not all_info:
-        result = Parser().make_json(id_movies=tuple((str(mov_id),)), pref='../', parse_from_web=True,
-                                    dump_from_web=dump_in)
+        result = Parser().make_json(id_movies=tuple((str(mov_id),)), parse_from_web=True)
         if not result:
-            return error, 404
-        else:
-            with open(file='../dumps/movies_info.json', mode='r', encoding='utf-8') as file:
-                dump_in_2 = json.load(file)
-            dump_in.update(dump_in_2)
-            all_info = dump_in.get(str(mov_id), {})
+            return redirect(f"https://www.kinopoisk.ru/film/{mov_id}")
+        all_info = get_long_info(id_movie=mov_id)
+
     common_info = all_info["Общая информация о фильме"]
     name = common_info["name"]
     description = common_info["description"] if common_info["description"] is not None else name
@@ -122,14 +130,11 @@ def page(mov_id: int):
     sequels = sim_seq_movie(key="sequelsAndPrequels", common_info=common_info)
 
     actors_list = []
-    # print(f'{information[0]=}')
     actors_info = information[0].get('актеры и прочие', '').split('\n    ')
-    # print(f'{actors_info=}')
     for point in actors_info:
         if point:
             actors = []
             list_point = point.split()
-            # print(f'{list_point=}')
             actors.extend([list_point[0], list_point[1], list_point[-1], ' '.join(list_point[2:-1])])
             actors_list.append(actors)
         else:
@@ -140,7 +145,6 @@ def page(mov_id: int):
 
     seasons_info = information[2]
     seasons = []
-    # print(seasons_info)
     for info_seas in seasons_info:
         key = list(info_seas.keys())[0]
         values = list(info_seas.values())[0].split('\n    ')
@@ -172,35 +176,9 @@ def page(mov_id: int):
                            seasons=seasons, previews=previews)
 
 
-def sim_seq_movie(key, common_info):
-    out_list = []
-    for movie_info in common_info.get(key, {}):
-        names = r"/".join(
-            map(lambda x: x if x else '', [movie_info['name'], movie_info['enName'], movie_info['alternativeName']]))
-        mov_id = movie_info["id"]
-        url = '' if dump_in.get(str(mov_id), {}) else "https://www.kinopoisk.ru/film/"
-        names = fr"""<a href="{url}{mov_id}" target="_blank">{names}</a>"""
-        out_list.append(names)
-    return out_list
 
+logger.info('Запуск сайта')
 
-def points(key):
-    list_points = []
-    for movie in dump_in.values():
-        list_of_dict = movie["Общая информация о фильме"][key]
-        points_list = [genre["name"] for genre in list_of_dict]
-        list_points.extend(points_list)
-    else:
-        list_points = sorted(set(list_points))
-    return list_points
-
-
-logger.debug('Запуск сайта')
-
-dump_in = Parser().get_json(pref='../')
-
-genres = points("genres")
-countries_all = points("countries")
 
 if __name__ == "__main__":
     app.run(host='127.0.0.2', port=80, debug=True)

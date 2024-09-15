@@ -1,16 +1,12 @@
-import datetime
 import json
-import logging
+import os
 import sys
-from pprint import pprint
 
 import requests
 import re
 
-from prettytable import PrettyTable
-
-from messages import text
 from settings import token, query, RANDOM_MOVIE
+from site_app.models import get_all_mov_id, get_long_info, json_to_sql, delete
 
 HEADERS = {'X-API-KEY': token}
 BASE_URL = 'https://api.kinopoisk.dev'
@@ -48,12 +44,9 @@ class Parser:
     count_dupl = 0
     start = True
     stop = False
-    dump_in = dict()
-    dump_all = dict()
+    dump_in = {}
     all_keys = set()
-    url_json = ''
 
-    # @staticmethod
     def parse_json(self, endpoint, prnt, id_movie='') -> dict:
         """
         Метод возвращает json-объект, как результат парсинга стороннего API.
@@ -73,140 +66,110 @@ class Parser:
                 res_prn = json.dumps(res, indent=4, ensure_ascii=False)
                 print(res_prn)
             if res.get('statusCode', '') == 403:
-                # print(f'\033[031m{res["message"]}\033[039m')
                 print(f'{res["message"]}', file=sys.stderr)
                 self.stop_parse = True
-                with open(file=self.url_json, mode='w', encoding='utf-8') as file:
-                    json.dump(self.dump_in, file, indent=4, ensure_ascii=False)
-                print(f'\n\033[095mКоличество записей в базе данных увеличено на {self.count}\n\033[039m')
+                # записываем в бд вычисленный dump_in
+                json_to_sql(json_info=self.dump_in)
+                print(f'\033[095mКоличество записей в базе данных увеличено на {self.count}\033[039m')
         except Exception as ex:
+            # raise
             print(f'Ошибка парсинга {ex=}', file=sys.stderr)
             self.count += 1
         else:
             return res
 
-    def make_json(self, id_movies=('',), prnt=False, pref='', parse_from_web=False, dump_from_web=None, from_list_id=False) -> bool:
+    def make_json(self, id_movies=('',), prnt=False, parse_from_web=False, from_list_id=False) -> bool:
         """
-        Метод обновляет json-файл результатом парсинга API с разными эндпоинтами.
+        Метод обновляет sql базу результатом парсинга API с разными эндпоинтами.
         :param prnt: параметр, разрешающий вывод результата в консоль.
         :param id_movie: кортеж с id, по которым производится поиск, если необходимо.
         """
         # Создаем объект из дампа.
-        self.url_json = pref + "dumps/movies_info.json"
         if self.start:
-            self.dump_all = self.get_json(pref=pref) if not parse_from_web else dump_from_web
-            self.all_keys = set(self.dump_all.keys())
-            with open(file=self.url_json, mode='r', encoding='utf-8') as file:
-                self.dump_in: dict = json.load(file)
+            self.all_keys = get_all_mov_id()
+            self.dump_in = {}
             self.start = False
         # Получаем json объект из стороннего API.
         for id_movie in id_movies:
             if self.stop_parse and from_list_id:
                 break
             if id_movie in self.all_keys:
-                # print(f'Этот фильм уже в базе: {id_movie=}')
                 print(f'\033[032mЭтот фильм уже в базе:'
-                      f' {self.dump_all[id_movie]["Общая информация о фильме"]["name"]}\033[039m')
+                      f' {get_long_info(id_movie=id_movie)["Общая информация о фильме"]["name"]}\033[039m')
                 continue
             obj = self.parse_json(endpoint=INFO, id_movie=id_movie, prnt=prnt) if id_movie\
                 else self.parse_json(endpoint=RANDOM_MOVIE, prnt=prnt)
             self.requests_all += 1
+            if obj is None:
+                return False
             id_movie_get = str(obj.get('id', 0))
             if id_movie_get in self.all_keys:
                 self.count_dupl += 1
                 print(f'\033[032m {self.count_dupl} ({self.requests_all}) Этот фильм уже в базе:'
-                      f' {self.dump_all.get(id_movie_get, {}).get("Общая информация о фильме", {}).get("name", "")}\033[039m')
+                      f' {get_long_info(id_movie=id_movie_get)["Общая информация о фильме"]["name"]}\033[039m')
                 if self.stop:
                     self.stop = False
                 continue
             else:
                 self.all_keys.add(id_movie_get)
             # Проверка соответствия типа полученного объекта obj и наличия в объекте ключа id.
+            # print(f"{obj = }")
             if isinstance(obj, dict) and (id_movie := obj.get('id', 0)):
                 id_movie = str(id_movie)
                 is_series = obj['isSeries']
                 if not obj['name']:
-                    name = obj['names'][0]['name']
-                    obj['name'] = name
+                    try:
+                        name = obj['names'][0]['name']
+                        obj['name'] = name
+                    except IndexError:
+                        obj['name'] = "неизвестно"
                 dump_temp = dict.fromkeys(['Общая информация о фильме'], obj)
                 dump_temp.update(
                     {'Информация о сезонах и эпизодах': self.parse_json(endpoint=ALL_SEAS_EPIS, id_movie=id_movie, prnt=prnt) if is_series else {}})
                 if is_series:
                     self.requests_all += 1
                 # проверяем, достигнут ли лимит запросов на данном этапе
-                if dump_temp.get("Информация о сезонах и эпизодах").get("statusCode", '') == 403:
-                    self.stop_parse = True
-                    self.stop = True
-                else:
-                    dump_temp.update({'Отзывы зрителей': self.parse_json(endpoint=REVIEW, id_movie=id_movie, prnt=prnt)})
-                    self.requests_all += 1
-                    # проверяем, достигнут ли лимит запросов на данном этапе
-                    if dump_temp.get("Отзывы зрителей").get("statusCode", '') == 403:
+                try:
+                    if dump_temp.get("Информация о сезонах и эпизодах").get("statusCode", '') == 403:
                         self.stop_parse = True
                         self.stop = True
                     else:
-                        self.dump_in.update({id_movie: dump_temp})
-                        self.count += 1
-                        name_get_film = self.dump_in[id_movie]["Общая информация о фильме"]["name"]
-                        print(self.count, f'({self.requests_all})', name_get_film)
+                        dump_temp.update({'Отзывы зрителей': self.parse_json(endpoint=REVIEW, id_movie=id_movie, prnt=prnt)})
+                        self.requests_all += 1
+                        # проверяем, достигнут ли лимит запросов на данном этапе
+                        if dump_temp.get("Отзывы зрителей").get("statusCode", '') == 403:
+                            self.stop_parse = True
+                            self.stop = True
+                        else:
+                            self.dump_in.update({id_movie: dump_temp})
+                            self.count += 1
+                            name_get_film = self.dump_in[id_movie]["Общая информация о фильме"]["name"]
+                            print(self.count, f'({self.requests_all})', name_get_film)
+                except AttributeError as ex:
+                    print(f"AttributeError {ex = }")
+                    return False
             elif from_list_id:
                 print('По этому id ничего не найдено!')
             else:
                 print('По этому id ничего не найдено!')
                 return False
         if self.stop or parse_from_web:
-            with open(file=self.url_json, mode='w', encoding='utf-8') as file:
-                json.dump(obj=self.dump_in, fp=file, indent=4, ensure_ascii=False)
-            print(f'\n\033[095mКоличество записей в базе данных увеличено на {self.count}\n\033[039m')
+            json_to_sql(json_info=self.dump_in)
+            print(f'\033[095mКоличество записей в базе данных увеличено на {self.count}\033[039m')
         return True
 
     @staticmethod
-    def get_json(prnt=False, id_movie='', url='dumps/movies_info.json', pref=''):
+    def get_json(id_movie, prnt=False):
         """
-        Метод создает json объект из файла. При необходимости можно вывести результат на экран.
+        Метод получает json объект из базы sql. При необходимости можно вывести результат на экран.
         """
-        with open(file=f'{pref}dumps/movies1_info.json', mode='r', encoding='utf-8') as file:
-            dump_in: dict = json.load(file)
-        with open(file=pref + url, mode='r', encoding='utf-8') as file:
-            dump_in_2: dict = json.load(file)
-        dump_in.update(dump_in_2)
-        del dump_in_2
-        if id_movie:
-            dump_in = dump_in.get(id_movie, {'message': 'По этому id ничего не найдено!'})
+        res = get_long_info(id_movie=id_movie)
+        dump_in = res if res else {'message': 'По этому id ничего не найдено!'}
         if prnt:
             res: str = json.dumps(dump_in, indent=4, ensure_ascii=False)
             print(res)
         return dump_in
 
-    @staticmethod
-    def print_table(obj, field_sort=None, is_reverse=False) -> None:
-        """
-        Метод формирует поля для вывода информации в табличном варианте.
-        """
-        # Сортировка словаря по значениям полей
-        if field_sort:
-            obj = {x: obj[x] for x in sorted(obj.keys(), key=lambda a:
-            int(obj[a][text].get(FIELDS[field_sort]).get('kp', 0)) if field_sort in ('5', '55') else str(
-                obj[a][text].get(FIELDS[field_sort], '')), reverse=is_reverse
-                                             )}
-        # В данном списке формируются поля для таблицы. В случае длинных текстов, они обрезаются.
-        list_mov = [[ind + 1,
-                     key,
-                     list(map(lambda x: x[:25] + '..' if len(x) > 25 else x, [str(obj[key][text]['name'])]))[0],
-                     obj[key][text]['year'],
-                     obj[key][text]['type'][:12],
-                     ','.join(list(map(lambda x: x['name'][:3] if len(obj[key][text]['genres']) >= 3 else x['name'],
-                                       obj[key][text]['genres']))),
-                     obj[key][text]['votes'].get('kp', '-'),
-                     list(map(lambda x: x[:70] + '..' if len(x) > 75 else x,
-                              [str(obj[key][text].get('description', ''))]))[0].replace('\n', ''),
-                     ','.join(list(map(lambda x: x['name'] if len(obj[key][text]['countries']) == 1 else x['name'][:3],
-                                       obj[key][text]['countries'])))[:28]]
-                    for ind, key in enumerate(obj.keys())]
-        my_table = PrettyTable()
-        my_table.field_names = ["id", "mov_id", "name", "year", "тип", "жанр", "голосов", "описание", "страна"]
-        my_table.add_rows(list_mov)
-        print(my_table)
 
     @staticmethod
     def print_info(obj, prnt=True):
@@ -337,15 +300,10 @@ class Parser:
         print(f'Найдено {len(res_out)} фильмов')
         return list_out
 
-    def del_movie(self, movie_id) -> bool:
-        for suffix in ('', '1'):
-            with open(file=f'dumps/movies{suffix}_info.json', mode='r', encoding='utf-8') as file:
-                dump: dict = json.load(file)
-            keys = set(dump.keys())
-            if movie_id in keys:
-                dump.pop(movie_id, {})
-                with open(file=f'dumps/movies{suffix}_info.json', mode='w', encoding='utf-8') as file:
-                    json.dump(dump, file, indent=4, ensure_ascii=False)
-                return True
-        else:
-            return False
+    @staticmethod
+    def del_movie(movie_id) -> bool:
+        film_is_exist = get_long_info(id_movie=movie_id)
+        if film_is_exist:
+            delete(id_movie=movie_id)
+            return True
+

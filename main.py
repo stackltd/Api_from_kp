@@ -8,20 +8,21 @@ from messages import *
 
 parse = Parser()
 
+os.chdir(os.path.abspath('./site_app/'))
+
 def zero():
     parse.count = 0
     parse.requests_all = 0
     parse.count_dupl = 0
     parse.stop = False
     parse.start = True
-    del parse.dump_in
 
 @timer
 def main() -> None:
     """
-    Функция позволяет заполнять базу данных в виде json информацией о фильмах из API Кинопоиска,
-    заполнять ее по-известному id, а так же вывести информацию из json файла как в исходном виде, так и в кратком
-    табличном формате.
+    Функция позволяет заполнять базу данных sql json информацией о фильмах из API Кинопоиска,
+    заполнять ее по-известному id, выводить информацию как в json, так и в кратком
+    табличном формате, а так же удалять фильмы из базы.
     """
     while True:
         print('\nВыберите желаемый пункт меню:')
@@ -44,6 +45,7 @@ def main() -> None:
                         parse.stop = True
                     parse.make_json(prnt=ask_2 == '1')
                 except Exception as ex:
+                    # raise
                     print(f'Произошла ошибка: {ex = }', file=sys.stderr)
                     # raise
                     # break
@@ -78,38 +80,6 @@ def main() -> None:
             parse.make_json(id_movies=tuple(id_movies), prnt=ask_2 == '1', from_list_id=True)
             zero()
         elif ask_1 == '3':
-            ask_2 = input('Будет выведена таблица с краткой информацией о фильмах.'
-                          ' Если же хотите вывести все данные, введите 1, если только таблицу - любой символ\n')
-            res = parse.get_json(prnt=ask_2 == '1')
-            parse.print_table(obj=res)
-            while True:
-                ask_3 = input('Введите для сортировки по возрастанию: 1: по имени, 2: по году, 3: по типу, 4: по жанру,'
-                              ' 5: по голосам, 6: по стране. '
-                              'В обратном порядке - введите двойное число'
-                              '\nДля поиска фильма и вывода в адаптированном виде введите id. В json-формате - '
-                              'напишите звездочку после id.'
-                              '\nДля удаления фильма из базы введите его id и напишите знак минус (-) после него'
-                              '\nВыход в основное меню - нажмите энтер.\n')
-                if ask_3 in ('1', '2', '3', '4', '5', '6', '11', '22', '33', '44', '55', '66'):
-                    field_sort = ask_3 if len(ask_3) == 1 else ask_3[:1]
-                    is_reverse = len(ask_3) == 2
-                    parse.print_table(obj=res, field_sort=field_sort, is_reverse=is_reverse)
-                elif ask_3 != '':
-                    if ask_3.endswith('*'):
-                        parse.get_json(prnt=True, id_movie=ask_3[:-1])
-                        input('Нажмите ввод для вывода таблицы ')
-                    elif ask_3.endswith('-'):
-                        parse.del_movie(ask_3[:-1])
-                        res = parse.get_json()
-                        parse.print_table(obj=res)
-                    else:
-                        obj = parse.get_json(id_movie=ask_3)
-                        parse.print_info(obj=obj)
-                        input('Нажмите ввод для вывода таблицы ')
-                    parse.print_table(obj=res)
-                else:
-                    break
-        elif ask_1 == '4':
             ask_2 = input('\nДля поиска фильма и вывода в адаптированном виде введите id. В json-формате - '
                           'напишите звездочку после id.\n')
             if ask_2.endswith('*'):
@@ -117,7 +87,7 @@ def main() -> None:
             else:
                 obj = parse.get_json(id_movie=ask_2)
                 parse.print_info(obj=obj)
-        elif ask_1 == '5':
+        elif ask_1 == '4':
             ask_2 = input('Введите id фильма, который нужно удалить\n')
             res = parse.del_movie(ask_2)
             if res:
